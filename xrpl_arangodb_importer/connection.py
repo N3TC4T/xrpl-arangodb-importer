@@ -1,5 +1,5 @@
+# coding=utf-8
 from xrpl_websocket import Client
-
 from benedict import benedict
 
 from .transaction import Transaction

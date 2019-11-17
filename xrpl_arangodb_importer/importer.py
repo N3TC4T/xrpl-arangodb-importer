@@ -1,3 +1,4 @@
+# coding=utf-8
 
 class Importer():
     def __init__(self, connection=None, database=None, logger=None, startLedger=None):

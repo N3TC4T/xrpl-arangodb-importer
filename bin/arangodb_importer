@@ -10,7 +10,7 @@ import argparse
 import logging
 import datetime
 
-from libs import Database, Connection, Importer
+from xrpl_arangodb_importer import Database, Connection, Importer
 
 try:
     from pyArango.theExceptions import ValidationError
