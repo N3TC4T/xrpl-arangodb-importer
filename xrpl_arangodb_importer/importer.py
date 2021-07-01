@@ -1,43 +1,125 @@
 # coding=utf-8
+import queue
+from multiprocessing import Process, Pool, Queue, Manager
+from time import sleep
+
+from transaction import Transaction
+
+class FetchWorker(Process):
+  def __init__(self, q, source, start_index, end_index):
+
+    self.q = q
+
+    self.source = source
+
+    self.start_index = start_index
+    self.end_index = end_index
+    self.current_index = start_index
+
+    super().__init__()
+
+  def put(self, index, tx):
+    try:
+      self.q.put_nowait((index, tx))
+    except queue.Full:
+      print("Queue is full, try again in 0.1 secounds")
+      sleep(0.1)
+      self.put(index, tx)
+
+  def run(self):
+    while self.current_index < self.end_index:
+      index, txs  = self.source.get_transactions(self.current_index)
+
+      for tx in txs:
+        self.put(index, tx)
+
+      # process next ledger index
+      self.current_index += 1
+
+
+class ProcessWorker(Process):
+  def __init__(self, q, db):
+    self.q = q
+    self.db = db
+
+    super().__init__()
+
+  def run(self):
+    while True:
+      try:
+        index, tx = self.q.get()
+        self.db.insert(Transaction(tx, index))
+      except Exception as e:
+        print(e)
+        pass
+        # print(e)
+        # print(tx)
 
 class Importer():
-    def __init__(self, connection=None, database=None, logger=None, startLedger=None):
-        assert database , "Database class need to be pass as to the class"
-        assert connection , "Connection class need to be pass as to the class"
+    def __init__(self, source=None, database=None, logger=None, startLedger=None):
+        assert database , "Database need to be pass as to the class"
+        assert source , "Source need to be pass as to the class"
 
         # set database instance
         self.db = database
-        # set connection instance
-        self.conn = connection
+        # set source instance
+        self.source = source
+
+        # number of workers
+        self.max_workers = 5
+
+        self.workers = []
 
         # set starting ledger point
-        if not startLedger or startLedger == -1:
-            self.currentIndex = 32570 # first ledger
+        self.start_index = None
+        self.end_index = None
+
+        if startLedger:
+            self.start_index = startLedger
         else:
-            self.currentIndex = startLedger
-
-        self.lastIndex = None
-
-        self.logger = logger
+            self.start_index = self.db.last_saved_seq()
 
 
-    def percent(self, end):
-        p = 100 * float(self.currentIndex)/float(end)
+    def percent(self, current):
+        p = ((self.end_index - current)/self.end_index) * 100
         return int(p)
 
+    def stop(self):
+        # terminate workers
+        for worker in self.workers:
+          worker.terminate()
+
+        # close connection to source
+        self.source.close()
+
     def start(self):
-        # as the each ledger index depends on another
-        # we cannot use threading
+        start, end = self.source.get_ledger_range()
 
-        start, end = self.conn.get_ledger_range()
+        if not self.start_index:
+            self.start_index = start
 
-        print("")
+        if not self.end_index:
+            self.end_index = end
 
-        while True:
-            print("[!] Proccessing Ledger %s%% (%s/%s)" % (self.percent(end) , self.currentIndex, end), end='\r')
-            index, txs  = self.conn.get_transactions(self.currentIndex)
+        print("[!] Start-End Ledger index %s-%s" % (self.start_index, end, ), end='\n')
+        print("[!] Using %s workers" % self.max_workers, end='\n')
 
-            for tx in txs:
-                self.db.insert(tx)
 
-            self.currentIndex += 1
+        manager = Manager()
+        q = manager.Queue(maxsize=1000000)
+
+        # start workers for processing the transactions from queue
+        fetchWorker = FetchWorker(q, self.source, self.start_index, self.end_index)
+
+        self.workers.append(fetchWorker)
+
+        for n in range(self.max_workers):
+            processWorker = ProcessWorker(q, self.db)
+            self.workers.append(processWorker)
+
+
+        for w in self.workers:
+          w.start()
+
+        for w in self.workers:
+          w.join()

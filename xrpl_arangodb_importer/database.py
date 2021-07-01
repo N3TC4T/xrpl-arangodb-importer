@@ -1,22 +1,31 @@
 import json
-import sys
+import sys, time
+
+from multiprocessing import Queue
+from threading import Thread
+
 from pyArango.connection import Connection, CreationError
 from pyArango.collection import Edges
 from pyArango.theExceptions import DocumentNotFoundError, ConnectionError
-
-from .transaction import Transaction
+from pyArango.collection import BulkOperation as BulkOperation
 
 
 # database class
 class Database(object):
-    def __init__(self, host, username, password, fresh=False):
+    def __init__(self, host = None, username = None, password=None, fresh=False):
 
         # constants
         self.databaseName = 'XRP_Ledger'
-        self.collectionsList = ['accounts']
+        self.collectionsList = ['accounts', 'transactions']
         self.collections = {}
-        self.edgeCollectionsList=['payment']
+        self.edgeCollectionsList=['transactionOutput']
         self.edgeCollections = {}
+
+        self.batchSize = 500
+
+        self.accountsQueue = Queue()
+        self.transactionsQueue = Queue()
+        self.transactionsOutputQueue = Queue()
 
         # create connection
         try:
@@ -35,14 +44,18 @@ class Database(object):
         except CreationError:
             self.db = conn[self.databaseName]
 
+        if fresh:
+            for collection in self.collectionsList + self.edgeCollectionsList:
+                if self.db.hasCollection(collection):
+                    self.db.collections[collection].delete()
+            self.db.reload()
+
         # set collections
         for collection in self.collectionsList:
             if not self.db.hasCollection(collection):
-                self.collections[collection] = self.db.createCollection(name=collection)
+                self.collections[collection] = self.db.createCollection(name=collection, className='Collection')
             else:
                 self.collections[collection] = self.db.collections[collection]
-
-
 
         # set edge collections
         for edge in self.edgeCollectionsList:
@@ -52,33 +65,86 @@ class Database(object):
                 self.edgeCollections[edge] = self.db.collections[edge]
 
 
-    def save_account(self, address):
+        # run the threads
+        bulkThreads = []
+
+        bulkThreads.append(Thread(target=self.save_account, args=(self.accountsQueue, )))
+        bulkThreads.append(Thread(target=self.save_tx_output, args=(self.transactionsOutputQueue, )))
+        bulkThreads.append(Thread(target=self.save_transaction, args=(self.transactionsQueue, )))
+
+        for t in bulkThreads:
+            t.setDaemon(True)
+            t.start()
+
+    def last_saved_seq(self):
+        aql = "FOR tx IN transactions SORT tx.LedgerIndex DESC LIMIT 1 RETURN tx.LedgerIndex"
+        queryResult = self.db.AQLQuery(aql, rawResults=True)
+
+        if len(queryResult) > 0:
+            return queryResult[0]
+
+        return None
+
+    def save_account(self, q):
+        with BulkOperation(self.collections['accounts'], batchSize=self.batchSize) as col:
+            while True:
+                if not q.empty():
+                    try:
+                        address = q.get()
+                        acc = {}
+                        acc['_key'] = address
+                        col.createDocument(acc).save(overwriteMode="ignore")
+                    except Exception as e:
+                        print("save_account", e)
+                        pass
+
+    def save_tx_output(self, q):
+        with BulkOperation(self.edgeCollections['transactionOutput'], batchSize=self.batchSize) as col:
+            while True:
+                if not q.empty():
+                    try:
+                        output = q.get()
+                        col.createDocument(output).save()
+                    except Exception as e:
+                        print("save_tx_output", e)
+                        pass
+
+    def save_transaction(self, q):
+        with BulkOperation(self.collections['transactions'], batchSize=self.batchSize) as col:
+            while True:
+                if not q.empty():
+                    try:
+                        tx = q.get()
+                        col.createDocument(tx).save()
+                    except Exception as e:
+                        print("save_transaction", e)
+                        pass
+
+    def insert(self,tx):
         try:
-            acc = {}
-            acc['_key'] = address
-            self.collections['accounts'].createDocument(acc).save()
-        except Exception:
-            pass
+            txJson = tx.json()
+            txJson['_key'] = tx['hash']
 
-    def save_payment(self, tx):
-        self.save_account(tx.Account)
-        self.save_account(tx.Destination)
+            self.transactionsQueue.put(txJson)
 
-        try:
-            self.edgeCollections['payment'].createDocument(tx.json()).save()
-        except Exception:
-            pass
+            outputs = tx.getTxOutput()
 
 
+            for output in outputs:
+                # save accounts
+                if "_from" in output:
+                    self.accountsQueue.put(output["_from"])
 
-    def insert(self,_tx):
+                if "_to" in output:
+                    self.accountsQueue.put(output["_to"])
 
-        try:
-            tx = Transaction(_tx)
+                if "_to" in output and "_from" in output:
+                    output["_from"] = "accounts/%s" % output["_from"]
+                    output["_to"] = "accounts/%s" % output["_to"]
+                    output["transaction"] = "transactions/%s" % tx['hash']
 
-            # add to tranasctions collection
-            if tx.TransactionType == 'Payment' :
-                self.save_payment(tx)
+                    self.transactionsOutputQueue.put(output)
+
 
         except Exception as e:
             print(e)
