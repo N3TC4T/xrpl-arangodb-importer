@@ -130,5 +130,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# deps
+xrpl-deserializer-c
+graphql_foxx
 
-secret/
+# other
+*.db

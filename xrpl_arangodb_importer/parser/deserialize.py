@@ -1,23 +1,22 @@
 import json
 import ctypes
 
-from .hex import toHex
+from hex import toHex
 
 _lib = ctypes.CDLL("../xrpl-deserializer-c/xd.so")
-_lib.f.argtypes=[ctypes.c_char_p, ctypes.c_uint16]
-_lib.f.restype = ctypes.c_char_p
+_lib.de.argtypes=[ctypes.c_char_p, ctypes.c_uint16]
+_lib.de.restype = ctypes.c_char_p
 
 
 def deser(tx_bytes):
    try:
       tx_bytes += bytes(chr(0), 'ascii')
-      return json.loads(_lib.f(ctypes.c_char_p(tx_bytes), len(tx_bytes)))
+      return json.loads(_lib.de(ctypes.c_char_p(tx_bytes), len(tx_bytes)))
    except Exception as e:
       print(e)
       print(toHex(tx_bytes))
       # print(_lib.f(ctypes.c_char_p(tx_bytes), len(tx_bytes)))
       return {}
-
 
 # gcc main.c base58.c sha-256.c -O3  -fPIC -shared -o xd.so
 # 
