@@ -1,9 +1,12 @@
+import os
 import json
 import ctypes
 
-from hex import toHex
+from .hex import toHex
 
-_lib = ctypes.CDLL("../xrpl-deserializer-c/xd.so")
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_lib = ctypes.CDLL(os.path.join(ROOT_DIR, "deps/xrpl-deserializer-c/xd.so"))
 _lib.de.argtypes=[ctypes.c_char_p, ctypes.c_uint16]
 _lib.de.restype = ctypes.c_char_p
 

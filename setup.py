@@ -5,17 +5,18 @@ from setuptools.command.install import install
 
 class InstallCommand(install):
     def post_install(self):
-      xrpl_deserilizer = "xrpl-deserializer-c"
+      package = "xrpl-deserializer-c"
+      dir_path = "src/deps/{}".format(package)
 
-      if os.path.isdir(xrpl_deserilizer):
-        rmtree(xrpl_deserilizer)
+      if os.path.isdir(dir_path):
+        rmtree(dir_path)
 
-      os.system("git clone https://github.com/XRPLF/{}".format(xrpl_deserilizer))
-      with open("{}/main.c".format(xrpl_deserilizer), "a") as file:
+      os.system("git clone https://github.com/XRPLF/{} {}".format(package, dir_path))
+      with open("{}/main.c".format(dir_path), "a") as file:
           file.write("\n")
           file.write("char* de(uint8_t* raw, uint16_t len) { b58_sha256_impl = calc_sha_256; uint8_t* output = 0; if (!deserialize(&output, raw, len, 0, 0, 0)) return ""; return ((char*) output); }")
 
-      os.system("cd {} && gcc main.c base58.c sha-256.c -O3  -fPIC -shared -o xd.so".format(xrpl_deserilizer))
+      os.system("cd {} && gcc main.c base58.c sha-256.c -O3  -fPIC -shared -o xd.so".format(dir_path))
     def run(self):
       install.run(self)
       self.post_install()
