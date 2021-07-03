@@ -1,3 +1,4 @@
 xrpl_websocket
 pyArango
 python-benedict
+tqdm

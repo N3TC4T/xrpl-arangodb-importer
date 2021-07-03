@@ -36,7 +36,7 @@ setup(
     scripts=['bin/arangodb_importer'],
     packages=find_packages(),
     install_requires=[
-        'xrpl_websocket', 'pyArango', 'python-benedict'
+        'xrpl_websocket', 'pyArango', 'python-benedict', 'tqdm'
     ],
     cmdclass={
         'install': InstallCommand,

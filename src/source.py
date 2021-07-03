@@ -44,6 +44,13 @@ class Source():
         else:
             self.connection.disconnect()
 
+    def get_transactions_count(self, ledger_index):
+        if not self.is_locale:
+            return None
+
+        count = self.get_connection().execute("SELECT COUNT(*) FROM  Transactions WHERE LedgerSeq >= (?)", (ledger_index, )).fetchone()["COUNT(*)"]
+        return count
+
     def get_ledger_range(self):
         start = 0
         end = 0
@@ -96,7 +103,6 @@ class Source():
                     "expand": True
                 }
             )
-
 
         expanded_txs = benedict(expanded_txs)
 

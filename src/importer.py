@@ -1,7 +1,9 @@
 # coding=utf-8
 import queue
-from multiprocessing import Process, Pool, Queue, Manager
 from time import sleep
+from tqdm import tqdm
+
+from multiprocessing import Process, Pool, Queue, Manager
 
 from transaction import Transaction
 
@@ -38,7 +40,8 @@ class FetchWorker(Process):
 
 
 class ProcessWorker(Process):
-  def __init__(self, q, db):
+  def __init__(self, q, db, tracker):
+    self.tracker = tracker
     self.q = q
     self.db = db
 
@@ -49,11 +52,10 @@ class ProcessWorker(Process):
       try:
         index, tx = self.q.get()
         self.db.insert(Transaction(tx, index))
+        self.tracker()
       except Exception as e:
         print(e)
         pass
-        # print(e)
-        # print(tx)
 
 class Importer():
     def __init__(self, source=None, database=None, logger=None, startLedger=None):
@@ -79,10 +81,15 @@ class Importer():
         else:
             self.start_index = self.db.last_saved_seq()
 
+        self.pbar = None
 
     def percent(self, current):
         p = ((self.end_index - current)/self.end_index) * 100
         return int(p)
+
+    def tracker(self):
+      if self.pbar:
+        self.pbar.update(1)
 
     def stop(self):
         # terminate workers
@@ -95,6 +102,8 @@ class Importer():
     def start(self):
         start, end = self.source.get_ledger_range()
 
+        all_count = self.source.get_transactions_count(start)
+
         if not self.start_index:
             self.start_index = start
 
@@ -102,8 +111,11 @@ class Importer():
             self.end_index = end
 
         print("[!] Start-End Ledger index %s-%s" % (self.start_index, end, ), end='\n')
-        print("[!] Using %s workers" % self.max_workers, end='\n')
+        print("[!] Using %s workers" % self.max_workers, end='\n\n')
 
+
+        if all_count:
+          self.pbar = tqdm(desc = "[!]", unit="tx", total=all_count, bar_format="{desc}{percentage:3.0f}%|{bar}{r_bar}")
 
         manager = Manager()
         q = manager.Queue(maxsize=1000000)
@@ -114,7 +126,7 @@ class Importer():
         self.workers.append(fetchWorker)
 
         for n in range(self.max_workers):
-            processWorker = ProcessWorker(q, self.db)
+            processWorker = ProcessWorker(q, self.db, self.tracker)
             self.workers.append(processWorker)
 
 
