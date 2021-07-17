@@ -14,7 +14,8 @@ class InstallCommand(install):
       os.system("git clone https://github.com/XRPLF/{} {}".format(package, dir_path))
       with open("{}/main.c".format(dir_path), "a") as file:
           file.write("\n")
-          file.write("char* de(uint8_t* raw, uint16_t len) { b58_sha256_impl = calc_sha_256; uint8_t* output = 0; if (!deserialize(&output, raw, len, 0, 0, 0)) return ""; return ((char*) output); }")
+          file.write("uint8_t *de(uint8_t* raw, uint16_t len) { b58_sha256_impl = calc_sha_256; uint8_t* output = 0; if (!deserialize(&output, raw, len, 0, 0, 0)) return 0; return output; }\nvoid freeme(char *ptr) { free(ptr); ptr = NULL; }")
+
 
       os.system("cd {} && gcc main.c base58.c sha-256.c -O3  -fPIC -shared -o xd.so".format(dir_path))
     def run(self):

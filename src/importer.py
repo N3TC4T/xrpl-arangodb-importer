@@ -3,7 +3,7 @@ import queue
 from time import sleep
 from tqdm import tqdm
 
-from multiprocessing import Process, Pool, Queue, Manager
+from multiprocessing import Process, Pool, Queue, Manager, cpu_count
 
 from transaction import Transaction
 
@@ -22,9 +22,8 @@ class FetchWorker(Process):
 
   def put(self, index, tx):
     try:
-      self.q.put_nowait((index, tx))
+      self.q.put((index, tx))
     except queue.Full:
-      print("Queue is full, try again in 0.1 secounds")
       sleep(0.1)
       self.put(index, tx)
 
@@ -50,7 +49,7 @@ class ProcessWorker(Process):
   def run(self):
     while True:
       try:
-        index, tx = self.q.get()
+        index, tx = self.q.get(block=True)
         self.db.insert(Transaction(tx, index))
         self.tracker()
       except Exception as e:
@@ -68,7 +67,9 @@ class Importer():
         self.source = source
 
         # number of workers
-        self.max_workers = 5
+        self.max_workers = cpu_count()
+
+        self.queue_size = 10000
 
         self.workers = []
 
@@ -117,8 +118,7 @@ class Importer():
         if all_count:
           self.pbar = tqdm(desc = "[!]", unit="tx", total=all_count, bar_format="{desc}{percentage:3.0f}%|{bar}{r_bar}")
 
-        manager = Manager()
-        q = manager.Queue(maxsize=1000000)
+        q = Manager().Queue(maxsize=self.queue_size)
 
         # start workers for processing the transactions from queue
         fetchWorker = FetchWorker(q, self.source, self.start_index, self.end_index)

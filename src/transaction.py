@@ -2,13 +2,10 @@
 import json
 from decimal import Decimal
 
-from xrpl.core.binarycodec import decode
-
 from parser.flags import txFlags, AccountFlags
 from parser.meta import Meta
 from parser.hex import toHex, fromHex
 from parser.deserialize import deser
-
 
 class Transaction(dict):
     def __init__(self, tx, ledger_index):
@@ -18,7 +15,7 @@ class Transaction(dict):
             for key, value in deser(tx["RawTxn"]).items():
                 setattr(self, key, value)
 
-            setattr(self, 'metaData', decode(toHex(tx["TxnMeta"])))
+            setattr(self, 'metaData', deser(tx["TxnMeta"]))
         else:
             for key, value in tx.items():
                 setattr(self, key, value)
@@ -58,7 +55,7 @@ class Transaction(dict):
     def Memos(self, value):
         memos = []
         for m in value:
-            memo = {k: fromHex(v)  for k, v in m["Memo"].items()}
+            memo = {k: str(fromHex(v))  for k, v in m["Memo"].items()}
             memos.append(memo)
 
         self["Memos"] = memos
@@ -181,6 +178,5 @@ class Transaction(dict):
 
     def json(self):
         return dict.copy(self)
-        # return json.loads(json.dumps(self, ensure_ascii=False))
 
 

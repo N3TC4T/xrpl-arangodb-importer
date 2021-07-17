@@ -1,7 +1,9 @@
 import json
-import sys, time
+import sys
+from time import sleep
 
-from multiprocessing import Queue
+import queue
+from multiprocessing import Queue, Process, Manager
 from threading import Thread
 
 from pyArango.connection import Connection, CreationError
@@ -9,6 +11,22 @@ from pyArango.collection import Edges
 from pyArango.theExceptions import DocumentNotFoundError, ConnectionError
 from pyArango.collection import BulkOperation as BulkOperation
 
+
+class BulkInsert(Process):
+  def __init__(self, collection=None, queue=None, batchSize=0):
+      super().__init__()
+
+      self.queue = queue
+      self.collection = collection
+      self.batchSize = batchSize
+
+  def run(self):
+      with BulkOperation(self.collection, batchSize=self.batchSize) as col:
+            while True:
+                try:
+                    col.createDocument(self.queue.get(block=True)).save(overwriteMode="ignore", waitForSync=False)
+                except Exception as e:
+                    pass
 
 # database class
 class Database(object):
@@ -21,11 +39,13 @@ class Database(object):
         self.edgeCollectionsList=['transactionOutput']
         self.edgeCollections = {}
 
+        self.maxProcess = 4
         self.batchSize = 500
+        self.maxQueueSize= self.batchSize * self.maxProcess
 
-        self.accountsQueue = Queue()
-        self.transactionsQueue = Queue()
-        self.transactionsOutputQueue = Queue()
+        self.accountsQueue = Manager().Queue(maxsize=self.maxQueueSize)
+        self.transactionsQueue = Manager().Queue(maxsize=self.maxQueueSize)
+        self.transactionsOutputQueue = Manager().Queue(maxsize=self.maxQueueSize)
 
         # create connection
         try:
@@ -66,14 +86,14 @@ class Database(object):
 
 
         # run the threads
-        bulkThreads = []
+        processes = []
 
-        bulkThreads.append(Thread(target=self.save_account, args=(self.accountsQueue, )))
-        bulkThreads.append(Thread(target=self.save_tx_output, args=(self.transactionsOutputQueue, )))
-        bulkThreads.append(Thread(target=self.save_transaction, args=(self.transactionsQueue, )))
+        for i in range(self.maxProcess):
+            processes.append(BulkInsert(self.collections['accounts'], self.accountsQueue, self.batchSize))
+            processes.append(BulkInsert(self.collections['transactions'], self.transactionsQueue, self.batchSize))
+            processes.append(BulkInsert(self.edgeCollections['transactionOutput'], self.transactionsOutputQueue, self.batchSize))
 
-        for t in bulkThreads:
-            t.setDaemon(True)
+        for t in processes:
             t.start()
 
     def last_saved_seq(self):
@@ -85,65 +105,36 @@ class Database(object):
 
         return None
 
-    def save_account(self, q):
-        with BulkOperation(self.collections['accounts'], batchSize=self.batchSize) as col:
-            while True:
-                if not q.empty():
-                    try:
-                        address = q.get()
-                        acc = {}
-                        acc['_key'] = address
-                        col.createDocument(acc).save(overwriteMode="ignore")
-                    except Exception as e:
-                        print("save_account", e)
-                        pass
-
-    def save_tx_output(self, q):
-        with BulkOperation(self.edgeCollections['transactionOutput'], batchSize=self.batchSize) as col:
-            while True:
-                if not q.empty():
-                    try:
-                        output = q.get()
-                        col.createDocument(output).save()
-                    except Exception as e:
-                        print("save_tx_output", e)
-                        pass
-
-    def save_transaction(self, q):
-        with BulkOperation(self.collections['transactions'], batchSize=self.batchSize) as col:
-            while True:
-                if not q.empty():
-                    try:
-                        tx = q.get()
-                        col.createDocument(tx).save()
-                    except Exception as e:
-                        print("save_transaction", e)
-                        pass
+    def put(self, q, data):
+        try:
+          q.put(data)
+        except queue.Full:
+          sleep(0.1)
+          self.put(q, data)
 
     def insert(self,tx):
         try:
             txJson = tx.json()
             txJson['_key'] = tx['hash']
 
-            self.transactionsQueue.put(txJson)
+            self.put(self.transactionsQueue, txJson)
 
             outputs = tx.getTxOutput()
-
 
             for output in outputs:
                 # save accounts
                 if "_from" in output:
-                    self.accountsQueue.put(output["_from"])
+                    self.put(self.accountsQueue, { '_key': output["_from"]})
 
                 if "_to" in output:
-                    self.accountsQueue.put(output["_to"])
+                    self.put(self.accountsQueue, { '_key': output["_to"]})
 
                 if "_to" in output and "_from" in output:
                     output["_from"] = "accounts/%s" % output["_from"]
                     output["_to"] = "accounts/%s" % output["_to"]
                     output["transaction"] = "transactions/%s" % tx['hash']
 
-                    self.transactionsOutputQueue.put(output)
+                    self.put(self.transactionsOutputQueue, output)
 
 
         except Exception as e:
