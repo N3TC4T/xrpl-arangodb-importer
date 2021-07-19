@@ -48,6 +48,7 @@ class Source():
         if not self.is_locale:
             return None
 
+        return 8000000
         count = self.get_connection().execute("SELECT COUNT(*) FROM  Transactions WHERE LedgerSeq >= (?)", (ledger_index, )).fetchone()["COUNT(*)"]
         return count
 

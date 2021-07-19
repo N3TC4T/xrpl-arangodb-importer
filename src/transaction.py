@@ -1,11 +1,13 @@
 # transaction class
-import json
 from decimal import Decimal
 
 from parser.flags import txFlags, AccountFlags
 from parser.meta import Meta
 from parser.hex import toHex, fromHex
 from parser.deserialize import deser
+from parser.amount import dropsToXRP
+from parser.datetime import rippleToTimestap
+
 
 class Transaction(dict):
     def __init__(self, tx, ledger_index):
@@ -66,7 +68,7 @@ class Transaction(dict):
 
     @Fee.setter
     def Fee(self, value):
-        self["Fee"] =  Decimal(value) / Decimal(1000000)
+        self["Fee"] =  dropsToXRP(value)
 
     @property
     def LedgerIndex(self):
@@ -75,8 +77,6 @@ class Transaction(dict):
     @LedgerIndex.setter
     def LedgerIndex(self, value):
         self["LedgerIndex"] =  int(value)
-
-
 
     @property
     def Amount(self):
@@ -88,10 +88,94 @@ class Transaction(dict):
         if isinstance(value, str):
             self["Amount"] = {
                 'currency': 'XRP',
-                'value': str(Decimal(value) / Decimal(1000000))
+                'value': dropsToXRP(value)
             }
         else:
             self["Amount"] = value
+
+    @property
+    def TakerGets(self):
+        return self["TakerGets"]
+
+    @TakerGets.setter
+    def TakerGets(self, value):
+        # xrp to drops
+        if isinstance(value, str):
+            self["TakerGets"] = {
+                'currency': 'XRP',
+                'value': dropsToXRP(value)
+            }
+        else:
+            self["TakerGets"] = value
+
+    @property
+    def TakerPays(self):
+        return self["TakerPays"]
+
+    @TakerPays.setter
+    def TakerPays(self, value):
+        # xrp to drops
+        if isinstance(value, str):
+            self["TakerPays"] = {
+                'currency': 'XRP',
+                'value': dropsToXRP(value)
+            }
+        else:
+            self["TakerPays"] = value
+
+    @property
+    def DeliverMin(self):
+        return self["DeliverMin"]
+
+    @DeliverMin.setter
+    def DeliverMin(self, value):
+        # xrp to drops
+        if isinstance(value, str):
+            self["DeliverMin"] = {
+                'currency': 'XRP',
+                'value': dropsToXRP(value)
+            }
+        else:
+            self["DeliverMin"] = value
+
+    @property
+    def SendMax(self):
+        return self["SendMax"]
+
+    @SendMax.setter
+    def SendMax(self, value):
+        # xrp to drops
+        if isinstance(value, str):
+            self["SendMax"] = {
+                'currency': 'XRP',
+                'value': dropsToXRP(value)
+            }
+        else:
+            self["SendMax"] = value
+
+    @property
+    def CancelAfter(self):
+        return self["CancelAfter"]
+
+    @CancelAfter.setter
+    def CancelAfter(self, value):
+        self["CancelAfter"] = rippleToTimestap(value)
+
+    @property
+    def FinishAfter(self):
+        return self["FinishAfter"]
+
+    @FinishAfter.setter
+    def FinishAfter(self, value):
+        self["FinishAfter"] = rippleToTimestap(value)
+
+    @property
+    def Expiration(self):
+        return self["Expiration"]
+
+    @Expiration.setter
+    def Expiration(self, value):
+        self["Expiration"] = rippleToTimestap(value)
 
     @property
     def Flags(self):

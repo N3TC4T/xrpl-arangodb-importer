@@ -1,9 +1,9 @@
 # coding=utf-8
 import queue
+import progressbar
 from time import sleep
-from tqdm import tqdm
 
-from multiprocessing import Process, Pool, Queue, Manager, cpu_count
+from multiprocessing import Process, Pool, Queue, Manager, Value, cpu_count
 
 from transaction import Transaction
 
@@ -18,7 +18,7 @@ class FetchWorker(Process):
     self.end_index = end_index
     self.current_index = start_index
 
-    super().__init__()
+    super().__init__(daemon=True)
 
   def put(self, index, tx):
     try:
@@ -44,7 +44,7 @@ class ProcessWorker(Process):
     self.q = q
     self.db = db
 
-    super().__init__()
+    super().__init__(daemon=True)
 
   def run(self):
     while True:
@@ -53,7 +53,8 @@ class ProcessWorker(Process):
         self.db.insert(Transaction(tx, index))
         self.tracker()
       except Exception as e:
-        print(e)
+        with open('errors.txt', 'a') as f:
+          f.write(f'{e}\n')
         pass
 
 class Importer():
@@ -82,21 +83,25 @@ class Importer():
         else:
             self.start_index = self.db.last_saved_seq()
 
-        self.pbar = None
+        self.progress = None
+        self.counter = Value('i', 0)
 
     def percent(self, current):
         p = ((self.end_index - current)/self.end_index) * 100
         return int(p)
 
     def tracker(self):
-      if self.pbar:
-        self.pbar.update(1)
+      if self.progress:
+          with self.counter.get_lock():
+              self.counter.value += 1
+          self.progress.update(self.counter.value)
 
     def stop(self):
         # terminate workers
         for worker in self.workers:
           worker.terminate()
 
+        self.db.disconnect()
         # close connection to source
         self.source.close()
 
@@ -116,7 +121,7 @@ class Importer():
 
 
         if all_count:
-          self.pbar = tqdm(desc = "[!]", unit="tx", total=all_count, bar_format="{desc}{percentage:3.0f}%|{bar}{r_bar}")
+          self.progress = progressbar.ProgressBar(max_value=all_count)
 
         q = Manager().Queue(maxsize=self.queue_size)
 

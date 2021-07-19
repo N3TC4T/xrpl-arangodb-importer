@@ -14,7 +14,7 @@ from pyArango.collection import BulkOperation as BulkOperation
 
 class BulkInsert(Process):
   def __init__(self, collection=None, queue=None, batchSize=0):
-      super().__init__()
+      super().__init__(daemon=True)
 
       self.queue = queue
       self.collection = collection
@@ -22,11 +22,11 @@ class BulkInsert(Process):
 
   def run(self):
       with BulkOperation(self.collection, batchSize=self.batchSize) as col:
-            while True:
-                try:
-                    col.createDocument(self.queue.get(block=True)).save(overwriteMode="ignore", waitForSync=False)
-                except Exception as e:
-                    pass
+          while True:
+              try:
+                  col.createDocument(self.queue.get(block=True)).save(overwriteMode="ignore", waitForSync=False)
+              except Exception as e:
+                  pass
 
 # database class
 class Database(object):
@@ -49,7 +49,7 @@ class Database(object):
 
         # create connection
         try:
-            conn = Connection(
+            self.conn = Connection(
                 arangoURL=host,
                 username=username, password=password
             )
@@ -60,9 +60,9 @@ class Database(object):
 
         # set database
         try:
-            self.db = conn.createDatabase(name=self.databaseName)
+            self.db = self.conn.createDatabase(name=self.databaseName)
         except CreationError:
-            self.db = conn[self.databaseName]
+            self.db = self.conn[self.databaseName]
 
         if fresh:
             for collection in self.collectionsList + self.edgeCollectionsList:
@@ -86,15 +86,21 @@ class Database(object):
 
 
         # run the threads
-        processes = []
+        self.processes = []
 
         for i in range(self.maxProcess):
-            processes.append(BulkInsert(self.collections['accounts'], self.accountsQueue, self.batchSize))
-            processes.append(BulkInsert(self.collections['transactions'], self.transactionsQueue, self.batchSize))
-            processes.append(BulkInsert(self.edgeCollections['transactionOutput'], self.transactionsOutputQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.collections['accounts'], self.accountsQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.collections['transactions'], self.transactionsQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.edgeCollections['transactionOutput'], self.transactionsOutputQueue, self.batchSize))
 
-        for t in processes:
+        for t in self.processes:
             t.start()
+
+    def disconnect(self):
+        for t in self.processes:
+            t.terminate()
+
+        self.conn.disconnectSession()
 
     def last_saved_seq(self):
         aql = "FOR tx IN transactions SORT tx.LedgerIndex DESC LIMIT 1 RETURN tx.LedgerIndex"

@@ -34,10 +34,9 @@ setup(
     description="XRPL Arangodb Importer",
     license="MIT",
     url="https://github.com/N3TC4T/xrpl-arangodb-importer",
-    scripts=['bin/arangodb_importer'],
     packages=find_packages(),
     install_requires=[
-        'xrpl_websocket', 'pyArango', 'python-benedict', 'tqdm'
+        'xrpl_websocket', 'pyArango', 'python-benedict', 'progressbar2'
     ],
     cmdclass={
         'install': InstallCommand,
