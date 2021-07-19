@@ -91,10 +91,9 @@ class Importer():
         return int(p)
 
     def tracker(self):
-      if self.progress:
-          with self.counter.get_lock():
-              self.counter.value += 1
-          self.progress.update(self.counter.value)
+        with self.counter.get_lock():
+            self.counter.value += 1
+        self.progress.update(self.counter.value)
 
     def stop(self):
         # terminate workers
@@ -119,9 +118,7 @@ class Importer():
         print("[!] Start-End Ledger index %s-%s" % (self.start_index, end, ), end='\n')
         print("[!] Using %s workers" % self.max_workers, end='\n\n')
 
-
-        if all_count:
-          self.progress = progressbar.ProgressBar(max_value=all_count)
+        self.progress = progressbar.ProgressBar(max_value=all_count or progressbar.UnknownLength)
 
         q = Manager().Queue(maxsize=self.queue_size)
 
