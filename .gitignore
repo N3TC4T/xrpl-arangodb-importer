@@ -135,4 +135,6 @@ xrpl-deserializer-c
 graphql_foxx
 
 # other
+data/
 *.db
+errors.txt

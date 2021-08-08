@@ -10,7 +10,7 @@ from parser.datetime import rippleToTimestap
 
 
 class Transaction(dict):
-    def __init__(self, tx, ledger_index):
+    def __init__(self, tx, ledger_index, close_time):
         if 'RawTxn' in tx:
             self['hash'] = tx['TransID']
 
@@ -23,6 +23,8 @@ class Transaction(dict):
                 setattr(self, key, value)
 
         setattr(self, 'LedgerIndex', ledger_index)
+        if close_time:
+            setattr(self, 'date', close_time)
 
 
     def __getattr__(self,key):
@@ -176,6 +178,15 @@ class Transaction(dict):
     @Expiration.setter
     def Expiration(self, value):
         self["Expiration"] = rippleToTimestap(value)
+
+    @property
+    def date(self):
+        return self["date"]
+
+    @date.setter
+    def date(self, value):
+        self["date"] = rippleToTimestap(value)
+
 
     @property
     def Flags(self):

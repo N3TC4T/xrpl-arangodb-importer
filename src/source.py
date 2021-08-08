@@ -3,11 +3,10 @@
 from os import path
 from benedict import benedict
 
-from xrpl_websocket import Client
 import sqlite3
+from xrpl_websocket import Client
 
 from utils.factory import dict_factory
-
 
 class Source():
     def __init__(self, source=None):
@@ -15,17 +14,23 @@ class Source():
         # check if source is file or websocket
         self.is_locale = False
 
+        self.transactions_database = 'transaction.db'
+        self.ledger_database = 'ledger.db'
+
         # source connection
         self.connection = None
+        self.ledger = None
 
-        if path.isfile(source):
+        if path.isdir(source):
             # set local flag
             self.is_locale = True
 
-            # coonect to sqlite file
-            self.connection = sqlite3.connect(source, check_same_thread=False)
-            # self.connection.row_factory = sqlite3.Row
+            self.connection = sqlite3.connect(path.join(source, self.transactions_database), check_same_thread=False)
             self.connection.row_factory = dict_factory
+
+
+            self.ledger = sqlite3.connect(path.join(source, self.ledger_database), check_same_thread=False)
+            self.ledger.row_factory = dict_factory
         else:
             self.connection = Client(server=source)
             # connect to the websocket
@@ -69,17 +74,18 @@ class Source():
         # if locale fetch from local
         if self.is_locale:
             txs = self.get_connection().execute("SELECT * FROM Transactions WHERE LedgerSeq = (?)", (ledger_index, )).fetchall()
-            return ledger_index, txs
+            ledger_close_time = self.ledger.execute("SELECT * FROM Ledgers WHERE LedgerSeq = (?)", (ledger_index, )).fetchone()["ClosingTime"]
+            return txs, ledger_close_time
 
         # else fetch from remote
 
         # first get transaction counts
         raw = self.get_connection().send(
             {
-            "ledger_index": ledger_index,
-            "command": "ledger",
-            "transactions": True,
-            "expand": False
+                "ledger_index": ledger_index,
+                "command": "ledger",
+                "transactions": True,
+                "expand": False
             }
         )
 
@@ -106,4 +112,5 @@ class Source():
 
         expanded_txs = benedict(expanded_txs)
 
+        # TODO: change ledger_index to ledger_close_time
         return ledger_index, expanded_txs['result.ledger.transactions']

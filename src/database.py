@@ -24,7 +24,9 @@ class BulkInsert(Process):
       with BulkOperation(self.collection, batchSize=self.batchSize) as col:
           while True:
               try:
-                  col.createDocument(self.queue.get(block=True)).save(overwriteMode="ignore", waitForSync=False)
+                  col.createDocument(self.queue.get(block=True,timeout=10)).save(overwriteMode="ignore", waitForSync=False)
+              except queue.Empty:
+                  break
               except Exception as e:
                   pass
 

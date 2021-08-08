@@ -20,19 +20,19 @@ class FetchWorker(Process):
 
     super().__init__(daemon=True)
 
-  def put(self, index, tx):
+  def put(self, tx, ledger_index, close_time):
     try:
-      self.q.put((index, tx))
+      self.q.put((tx, ledger_index, close_time))
     except queue.Full:
       sleep(0.1)
       self.put(index, tx)
 
   def run(self):
-    while self.current_index < self.end_index:
-      index, txs  = self.source.get_transactions(self.current_index)
+    while self.current_index <= self.end_index:
+      txs, close_time  = self.source.get_transactions(self.current_index)
 
       for tx in txs:
-        self.put(index, tx)
+        self.put(tx, self.current_index, close_time)
 
       # process next ledger index
       self.current_index += 1
@@ -49,10 +49,11 @@ class ProcessWorker(Process):
   def run(self):
     while True:
       try:
-        index, tx = self.q.get(block=True)
-        self.db.insert(Transaction(tx, index))
+        tx, ledger_index,close_time = self.q.get(block=True)
+        self.db.insert(Transaction(tx, ledger_index, close_time))
         self.tracker()
       except Exception as e:
+        print(e)
         with open('errors.txt', 'a') as f:
           f.write(f'{e}\n')
         pass
@@ -85,10 +86,6 @@ class Importer():
 
         self.progress = None
         self.counter = Value('i', 0)
-
-    def percent(self, current):
-        p = ((self.end_index - current)/self.end_index) * 100
-        return int(p)
 
     def tracker(self):
         with self.counter.get_lock():
