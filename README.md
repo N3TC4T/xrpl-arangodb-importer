@@ -26,5 +26,5 @@ optional arguments:
   -c, --clean           Clean database before import
   -d, --debug           Debug mode
  
-./main.py -s data.db -h http://127.0.0.1:829 -u arangodb_username -p arangodb_pass -d -v
+./main.py -s /var/lib/rippled/db/ -h http://127.0.0.1:829 -u arangodb_username -p arangodb_pass -d -v
 ```

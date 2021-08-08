@@ -49,7 +49,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--source', action="store", required=False,
                         type=str,
                         default='wss://xrplcluster.com',
-                        help='Node url or database path')
+                        help='Node url or sqlite database direcotry path')
     parser.add_argument('-l', '--ledger', action="store", required=False,
                         default=None, type=int,
                         help='Ledger index start from')
