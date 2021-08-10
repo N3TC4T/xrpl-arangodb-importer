@@ -3,11 +3,12 @@ import queue
 import progressbar
 from time import sleep
 
+from threading import Thread
 from multiprocessing import Process, Pool, Queue, Manager, Value, cpu_count
 
 from transaction import Transaction
 
-class FetchWorker(Process):
+class FetchWorker(Thread):
   def __init__(self, q, source, start_index, end_index):
 
     self.q = q
@@ -95,7 +96,8 @@ class Importer():
     def stop(self):
         # terminate workers
         for worker in self.workers:
-          worker.terminate()
+            if not isinstance(worker, FetchWorker):
+                worker.terminate()
 
         self.db.disconnect()
         # close connection to source

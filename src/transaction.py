@@ -13,18 +13,22 @@ class Transaction(dict):
     def __init__(self, tx, ledger_index, close_time):
         if 'RawTxn' in tx:
             self['hash'] = tx['TransID']
+            self['TransactionType'] = tx['TransType']
 
             for key, value in deser(tx["RawTxn"]).items():
                 setattr(self, key, value)
 
             setattr(self, 'metaData', deser(tx["TxnMeta"]))
         else:
+            self['TransactionType'] = tx['TransactionType']
+
             for key, value in tx.items():
                 setattr(self, key, value)
 
+        # set ledger index if set
         setattr(self, 'LedgerIndex', ledger_index)
-        if close_time:
-            setattr(self, 'date', close_time)
+        # set ledger close time
+        setattr(self, 'date', close_time)
 
 
     def __getattr__(self,key):
@@ -40,7 +44,6 @@ class Transaction(dict):
             _property.fset(self, value)
         else:
             self[key] = value
-
 
     @property
     def metaData(self):
@@ -222,7 +225,6 @@ class Transaction(dict):
                 flags[flagName] = False;
 
         self["Flags"] = flags
-
 
     def getTxOutput(self):
 
