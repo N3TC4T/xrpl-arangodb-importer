@@ -71,7 +71,7 @@ class Importer():
         self.source = source
 
         # number of workers
-        self.max_workers = cpu_count() / 2
+        self.max_workers = int(cpu_count() / 2)
         self.queue_size = 10000
         self.workers = []
 

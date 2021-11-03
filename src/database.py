@@ -45,7 +45,7 @@ class Database(object):
         self.edgeCollections = {}
 
         # processes
-        self.maxProcess = cpu_count() / 2
+        self.maxProcess = int(cpu_count() / 2)
         self.batchSize = 500
         self.maxQueueSize= self.batchSize * self.maxProcess
 

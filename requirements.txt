@@ -1,4 +1,4 @@
 xrpl_websocket
 pyArango
 python-benedict
-progressbar
+progressbar2
