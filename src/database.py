@@ -3,7 +3,7 @@ import sys
 from time import sleep
 
 import queue
-from multiprocessing import Queue, Process, Manager
+from multiprocessing import Queue, Process, Manager, cpu_count
 from threading import Thread
 
 from pyArango.connection import Connection, CreationError
@@ -34,24 +34,32 @@ class BulkInsert(Process):
 class Database(object):
     def __init__(self, host = None, username = None, password=None, fresh=False):
 
-        # constants
+        # database
+        self.host = host
+        self.username = username
+        self.password = password
         self.databaseName = 'XRP_Ledger'
         self.collectionsList = ['accounts', 'transactions']
         self.collections = {}
         self.edgeCollectionsList=['transactionOutput']
         self.edgeCollections = {}
 
-        self.maxProcess = 4
+        # processes
+        self.maxProcess = cpu_count() / 2
         self.batchSize = 500
         self.maxQueueSize= self.batchSize * self.maxProcess
 
+        # queue
         self.accountsQueue = Manager().Queue(maxsize=self.maxQueueSize)
         self.transactionsQueue = Manager().Queue(maxsize=self.maxQueueSize)
         self.transactionsOutputQueue = Manager().Queue(maxsize=self.maxQueueSize)
 
+        # tracking
+        self.lastStoredSeq = None
+
         # create connection
         try:
-            self.conn = Connection(
+            conn = Connection(
                 arangoURL=host,
                 username=username, password=password
             )
@@ -60,58 +68,65 @@ class Database(object):
             sys.exit(1)
 
 
-        # set database
+        # setup database
         try:
-            self.db = self.conn.createDatabase(name=self.databaseName)
+            db = conn.createDatabase(name=self.databaseName)
         except CreationError:
-            self.db = self.conn[self.databaseName]
+            db = conn[self.databaseName]
 
         if fresh:
             for collection in self.collectionsList + self.edgeCollectionsList:
-                if self.db.hasCollection(collection):
-                    self.db.collections[collection].delete()
-            self.db.reload()
+                if db.hasCollection(collection):
+                    db.collections[collection].delete()
+            db.reload()
 
-        # set collections
+        # setup collections
         for collection in self.collectionsList:
-            if not self.db.hasCollection(collection):
-                self.collections[collection] = self.db.createCollection(name=collection, className='Collection')
-            else:
-                self.collections[collection] = self.db.collections[collection]
+            if not db.hasCollection(collection):
+                db.createCollection(name=collection, className='Collection')
 
-        # set edge collections
+        # setup edge collections
         for edge in self.edgeCollectionsList:
-            if not self.db.hasCollection(edge):
-                self.edgeCollections[edge] = self.db.createCollection(name=edge, className='Edges')
-            else:
-                self.edgeCollections[edge] = self.db.collections[edge]
+            if not db.hasCollection(edge):
+                db.createCollection(name=edge, className='Edges')
 
+
+        # set last processed ledger seq
+        aql = "FOR tx IN transactions SORT tx.LedgerIndex DESC LIMIT 1 RETURN tx.LedgerIndex"
+        queryResult = db.AQLQuery(aql, rawResults=True)
+        if len(queryResult) > 0:
+            self.lastStoredSeq = queryResult[0]
 
         # run the threads
         self.processes = []
 
         for i in range(self.maxProcess):
-            self.processes.append(BulkInsert(self.collections['accounts'], self.accountsQueue, self.batchSize))
-            self.processes.append(BulkInsert(self.collections['transactions'], self.transactionsQueue, self.batchSize))
-            self.processes.append(BulkInsert(self.edgeCollections['transactionOutput'], self.transactionsOutputQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.get_connection('accounts'), self.accountsQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.get_connection('transactions'), self.transactionsQueue, self.batchSize))
+            self.processes.append(BulkInsert(self.get_connection('transactionOutput'), self.transactionsOutputQueue, self.batchSize))
 
         for t in self.processes:
             t.start()
+
+
+    def get_connection(self, collection):
+        try:
+            conn = Connection(
+                arangoURL=self.host,
+                username=self.username, password=self.password
+            )
+            db = conn[self.databaseName]
+            return db.collections[collection]
+        except ConnectionError:
+            print("Unable to create connection to the database")
+            return None
 
     def disconnect(self):
         for t in self.processes:
             t.terminate()
 
-        self.conn.disconnectSession()
-
-    def last_saved_seq(self):
-        aql = "FOR tx IN transactions SORT tx.LedgerIndex DESC LIMIT 1 RETURN tx.LedgerIndex"
-        queryResult = self.db.AQLQuery(aql, rawResults=True)
-
-        if len(queryResult) > 0:
-            return queryResult[0]
-
-        return None
+    def last_stored_seq(self):
+        return self.lastStoredSeq
 
     def put(self, q, data):
         try:

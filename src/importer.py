@@ -1,10 +1,11 @@
 # coding=utf-8
-import queue
-import progressbar
 from time import sleep
 
+import queue
 from threading import Thread
 from multiprocessing import Process, Pool, Queue, Manager, Value, cpu_count
+
+import progressbar
 
 from transaction import Transaction
 
@@ -70,10 +71,8 @@ class Importer():
         self.source = source
 
         # number of workers
-        self.max_workers = cpu_count()
-
+        self.max_workers = cpu_count() \ 2
         self.queue_size = 10000
-
         self.workers = []
 
         # set starting ledger point
@@ -83,7 +82,7 @@ class Importer():
         if startLedger:
             self.start_index = startLedger
         else:
-            self.start_index = self.db.last_saved_seq()
+            self.start_index = self.db.last_stored_seq()
 
         self.progress = None
         self.counter = Value('i', 0)
