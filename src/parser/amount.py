@@ -1,7 +1,5 @@
 from decimal import Decimal
+from math import frexp
 
-def dropsToXRP(value):
+def drops_to_xrp(value):
    return Decimal(value) / Decimal(1000000)
-
-def XRPToDrops(value):
-   return int(Decimal(value) * 1000000)

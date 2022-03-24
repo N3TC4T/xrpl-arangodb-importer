@@ -1,0 +1,8 @@
+{
+	"arangodb":{
+		"database": "XRPL",
+		"host": "http://127.0.0.1:8529",
+		"username": "root",
+		"password": ""
+	}
+}

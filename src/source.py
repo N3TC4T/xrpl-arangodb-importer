@@ -10,7 +10,6 @@ from utils.factory import dict_factory
 
 class Source():
     def __init__(self, source=None):
-
         # check if source is file or websocket
         self.is_locale = False
 

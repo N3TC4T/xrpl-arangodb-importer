@@ -5,7 +5,7 @@ from parser.flags import txFlags, AccountFlags
 from parser.meta import Meta
 from parser.hex import toHex, fromHex
 from parser.deserialize import deser
-from parser.amount import dropsToXRP
+from parser.amount import drops_to_xrp
 from parser.datetime import rippleToTimestap
 
 
@@ -73,7 +73,7 @@ class Transaction(dict):
 
     @Fee.setter
     def Fee(self, value):
-        self["Fee"] =  dropsToXRP(value)
+        self["Fee"] =  drops_to_xrp(value)
 
     @property
     def LedgerIndex(self):
@@ -88,15 +88,19 @@ class Transaction(dict):
         return self["Amount"]
 
     @Amount.setter
-    def Amount(self, value):
+    def Amount(self, amount):
         # xrp to drops
-        if isinstance(value, str):
+        if isinstance(amount, str):
             self["Amount"] = {
                 'currency': 'XRP',
-                'value': dropsToXRP(value)
+                'value': drops_to_xrp(amount)
             }
         else:
-            self["Amount"] = value
+            self["Amount"] = {
+                'currency': amount['currency'],
+                'issuer': amount['issuer'],
+                'value': Decimal(amount['value'])
+            }
 
     @property
     def TakerGets(self):
@@ -108,7 +112,7 @@ class Transaction(dict):
         if isinstance(value, str):
             self["TakerGets"] = {
                 'currency': 'XRP',
-                'value': dropsToXRP(value)
+                'value': drops_to_xrp(value)
             }
         else:
             self["TakerGets"] = value
@@ -123,7 +127,7 @@ class Transaction(dict):
         if isinstance(value, str):
             self["TakerPays"] = {
                 'currency': 'XRP',
-                'value': dropsToXRP(value)
+                'value': drops_to_xrp(value)
             }
         else:
             self["TakerPays"] = value
@@ -138,7 +142,7 @@ class Transaction(dict):
         if isinstance(value, str):
             self["DeliverMin"] = {
                 'currency': 'XRP',
-                'value': dropsToXRP(value)
+                'value': drops_to_xrp(value)
             }
         else:
             self["DeliverMin"] = value
@@ -153,7 +157,7 @@ class Transaction(dict):
         if isinstance(value, str):
             self["SendMax"] = {
                 'currency': 'XRP',
-                'value': dropsToXRP(value)
+                'value': drops_to_xrp(value)
             }
         else:
             self["SendMax"] = value

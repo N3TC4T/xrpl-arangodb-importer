@@ -1,5 +1,5 @@
 # coding=utf-8
-from time import sleep
+from time import sleep, time
 
 import queue
 from threading import Thread
@@ -10,15 +10,13 @@ import progressbar
 from transaction import Transaction
 
 class FetchWorker(Thread):
-  def __init__(self, q, source, start_index, end_index):
-
+  def __init__(self, q, source, current_index, end_index):
     self.q = q
 
     self.source = source
 
-    self.start_index = start_index
+    self.current_index = current_index
     self.end_index = end_index
-    self.current_index = start_index
 
     super().__init__(daemon=True)
 
@@ -30,14 +28,17 @@ class FetchWorker(Thread):
       self.put(index, tx)
 
   def run(self):
-    while self.current_index <= self.end_index:
-      txs, close_time  = self.source.get_transactions(self.current_index)
+    while True:
+      if self.current_index.value > self.end_index:
+        break
+
+      txs, close_time  = self.source.get_transactions(self.current_index.value)
 
       for tx in txs:
-        self.put(tx, self.current_index, close_time)
+        self.put(tx, self.current_index.value, close_time)
 
-      # process next ledger index
-      self.current_index += 1
+      with self.current_index.get_lock():
+        self.current_index.value += 1
 
 
 class ProcessWorker(Process):
@@ -61,77 +62,85 @@ class ProcessWorker(Process):
         pass
 
 class Importer():
-    def __init__(self, source=None, database=None, logger=None, startLedger=None):
-        assert database , "Database need to be pass as to the class"
-        assert source , "Source need to be pass as to the class"
+  def __init__(self, source=None, database=None, ledger=None):
+    assert database , "Database need to be pass as to the class"
+    assert source , "Source need to be pass as to the class"
 
-        # set database instance
-        self.db = database
-        # set source instance
-        self.source = source
+    # set database instance
+    self.db = database
+    # set source instance
+    self.source = source
 
-        # number of workers
-        self.max_workers = int(cpu_count() / 2)
-        self.queue_size = 10000
-        self.workers = []
+    # number of workers
+    self.max_workers = int(cpu_count() / 2)
+    self.queue_size = 10000
+    self.workers = []
 
-        # set starting ledger point
-        self.start_index = None
-        self.end_index = None
+    # set starting ledger point
+    self.start_index = None
+    self.end_index = None
 
-        if startLedger:
-            self.start_index = startLedger
-        else:
-            self.start_index = self.db.last_stored_seq()
+    # tracking current index
+    self.current_index = None
 
-        self.progress = None
-        self.counter = Value('i', 0)
+    if ledger:
+      self.start_index = ledger
+    else:
+      self.start_index = self.db.last_stored_seq()
 
-    def tracker(self):
-        with self.counter.get_lock():
-            self.counter.value += 1
-        self.progress.update(self.counter.value)
+      # progress
+      self.progress = None
+      self.counter = Value('i', 0)
 
-    def stop(self):
-        # terminate workers
-        for worker in self.workers:
-            if not isinstance(worker, FetchWorker):
-                worker.terminate()
+  def tracker(self):
+    # with self.counter.get_lock():
+    self.counter.value += 1
+    self.progress.update(self.counter.value)
 
-        self.db.disconnect()
-        # close connection to source
-        self.source.close()
+  def stop(self):
+    # terminate workers
+    for worker in self.workers:
+      if not isinstance(worker, FetchWorker):
+        worker.terminate()
 
-    def start(self):
-        start, end = self.source.get_ledger_range()
+    self.db.disconnect()
+    # close connection to source
+    self.source.close()
 
-        all_count = self.source.get_transactions_count(start)
+  def start(self):
+    # get ledger range from source
+    start, end = self.source.get_ledger_range()
 
-        if not self.start_index:
-            self.start_index = start
+    # calcualte all transactions count
+    all_count = self.source.get_transactions_count(start)
 
-        if not self.end_index:
-            self.end_index = end
+    # if no ledger start index set use the first index from soruce
+    if not self.start_index:
+      self.start_index = start
 
-        print("[!] Start-End Ledger index %s-%s" % (self.start_index, end, ), end='\n')
-        print("[!] Using %s workers" % self.max_workers, end='\n\n')
-
-        self.progress = progressbar.ProgressBar(max_value=all_count or progressbar.UnknownLength)
-
-        q = Manager().Queue(maxsize=self.queue_size)
-
-        # start workers for processing the transactions from queue
-        fetchWorker = FetchWorker(q, self.source, self.start_index, self.end_index)
-
-        self.workers.append(fetchWorker)
-
-        for n in range(self.max_workers):
-            processWorker = ProcessWorker(q, self.db, self.tracker)
-            self.workers.append(processWorker)
+    # if no ledger end index set use last index from soruce
+    if not self.end_index:
+      self.end_index = end
 
 
-        for w in self.workers:
-          w.start()
+    print("[!] Start-End Ledger index %s-%s" % (self.start_index, end, ), end='\n')
+    print("[!] Using %s workers" % self.max_workers, end='\n\n')
 
-        for w in self.workers:
-          w.join()
+    self.progress = progressbar.ProgressBar(max_value=all_count or progressbar.UnknownLength)
+
+    manager = Manager()
+    q = manager.Queue(maxsize=self.queue_size)
+
+    self.current_index = Value('i', self.start_index)
+
+    # start workers for processing the transactions from queue
+    for n in range(self.max_workers):
+      self.workers.append(FetchWorker(q, self.source, self.current_index, self.end_index))
+      self.workers.append(ProcessWorker(q, self.db, self.tracker))
+
+
+    for w in self.workers:
+      w.start()
+
+    for w in self.workers:
+      w.join()
