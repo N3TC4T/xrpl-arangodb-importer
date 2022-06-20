@@ -163,6 +163,21 @@ class Transaction(dict):
             self["SendMax"] = value
 
     @property
+    def NFTokenBrokerFee(self):
+        return self["NFTokenBrokerFee"]
+
+    @NFTokenBrokerFee.setter
+    def NFTokenBrokerFee(self, value):
+        # xrp to drops
+        if isinstance(value, str):
+            self["NFTokenBrokerFee"] = {
+                'currency': 'XRP',
+                'value': drops_to_xrp(value)
+            }
+        else:
+            self["NFTokenBrokerFee"] = value
+
+    @property
     def CancelAfter(self):
         return self["CancelAfter"]
 
@@ -185,6 +200,15 @@ class Transaction(dict):
     @Expiration.setter
     def Expiration(self, value):
         self["Expiration"] = rippleToTimestap(value)
+
+
+    @property
+    def URI(self):
+        return self["URI"]
+
+    @URI.setter
+    def URI(self, value):
+        self["URI"] = str(fromHex(value))
 
     @property
     def date(self):
@@ -211,6 +235,8 @@ class Transaction(dict):
                 'OfferCreate': txFlags['OfferCreate'],
                 'Payment': txFlags['Payment'],
                 'PaymentChannelClaim': txFlags['PaymentChannelClaim'],
+                'NFTokenMint': txFlags['NFTokenMint'],
+                'NFTokenCreateOffer': txFlags['NFTokenCreateOffer']
             }[self["TransactionType"]]
 
             for flagName in flagsList:
